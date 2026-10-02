@@ -1,0 +1,12 @@
+data/
+benchmarks/
+shotseg/
+c/*.exe
+c/shotseg
+__pycache__/
+*.pyc
+results/report_check/
+results/cuts_*.txt
+results/diffs_*.bin
+REPORT.md
+/Report_MultiThreaded_Video_Segmentation.docx
