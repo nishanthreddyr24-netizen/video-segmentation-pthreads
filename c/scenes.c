@@ -34,33 +34,60 @@ void shot_features(const float *hists, const Shot *shots, long ns, float *feat) 
     }
 }
 
+FeatLayout layout_global(void) {
+    FeatLayout L = {1, NBINS, {0}, {1}, {NBINS}, {1.0}};
+    return L;
+}
+
 /* chi-square histogram distance, in [0,1] for L1-normalised inputs */
-static float chi2(const float *a, const float *b) {
+static float chi2n(const float *a, const float *b, int n) {
     float d = 0.f;
-    for (int i = 0; i < NBINS; i++) {
+    for (int i = 0; i < n; i++) {
         float s = a[i] + b[i];
         if (s > 1e-9f) d += (a[i] - b[i]) * (a[i] - b[i]) / s;
     }
     return 0.5f * d;
 }
 
+static float feat_dist(const float *a, const float *b, const FeatLayout *L) {
+    float tot = 0.f, ws = 0.f;
+    for (int k = 0; k < L->nblocks; k++) {
+        if (L->w[k] <= 0) continue;
+        float d = 0.f;
+        for (int c = 0; c < L->ncells[k]; c++) {
+            int o = L->off[k] + c * L->bins[k];
+            d += chi2n(a + o, b + o, L->bins[k]);
+        }
+        tot += (float)L->w[k] * d / (float)L->ncells[k];
+        ws += (float)L->w[k];
+    }
+    return ws > 0 ? tot / ws : 0.f;
+}
+
 /* ---- Stage 1: pairwise similarity (PARALLEL) ------------------------ */
 typedef struct {
-    const float *feat;
+    const float *kf;
     long ns, lo, hi; /* rows [lo,hi) */
-    int T;
+    int T, K, klo, khi;
+    const FeatLayout *L;
     float *D;        /* ns x T ; D[i*T+o-1] = dist(shot i, shot i+o) */
 } SimJob;
 
 static void *sim_worker(void *arg) {
     SimJob *j = arg;
+    size_t fd = j->L->fd;
     for (long i = j->lo; i < j->hi; i++)
-        for (int o = 1; o <= j->T; o++)
-            j->D[(size_t)i * j->T + (o - 1)] =
-                (i + o < j->ns)
-                    ? chi2(j->feat + (size_t)i * NBINS,
-                           j->feat + (size_t)(i + o) * NBINS)
-                    : INF;
+        for (int o = 1; o <= j->T; o++) {
+            float best = INF;
+            if (i + o < j->ns)
+                for (int a = j->klo; a < j->khi; a++)
+                    for (int b = j->klo; b < j->khi; b++) {
+                        float d = feat_dist(j->kf + ((size_t)i * j->K + a) * fd,
+                                            j->kf + ((size_t)(i + o) * j->K + b) * fd, j->L);
+                        if (d < best) best = d;
+                    }
+            j->D[(size_t)i * j->T + (o - 1)] = best;
+        }
     return NULL;
 }
 
@@ -113,8 +140,9 @@ static void infer_threads(const float *D, long ns, const SceneParams *p,
     free(bp);
 }
 
-int segment_scenes(const float *feat, long ns, int nthreads,
-                   const SceneParams *p, SceneResult *out) {
+int segment_scenes(const float *kf, long ns, int K, int klo, int khi,
+                   const FeatLayout *L, int nthreads, const SceneParams *p,
+                   SceneResult *out) {
     memset(out, 0, sizeof *out);
     out->nshots = ns;
     if (ns <= 0) return 0;
@@ -125,8 +153,8 @@ int segment_scenes(const float *feat, long ns, int nthreads,
     pthread_t *th = malloc(nthreads * sizeof *th);
     SimJob *jobs = malloc(nthreads * sizeof *jobs);
     for (int t = 0; t < nthreads; t++) {
-        jobs[t] = (SimJob){feat, ns, ns * t / nthreads, ns * (t + 1) / nthreads,
-                           p->T, D};
+        jobs[t] = (SimJob){kf, ns, ns * t / nthreads, ns * (t + 1) / nthreads,
+                           p->T, K, klo, khi, L, D};
         pthread_create(&th[t], NULL, sim_worker, &jobs[t]);
     }
     for (int t = 0; t < nthreads; t++) pthread_join(th[t], NULL);
@@ -160,13 +188,22 @@ int segment_scenes(const float *feat, long ns, int nthreads,
     double t3 = now_sec();
 
     /* stage 4: DP that groups phases into scenes */
-    float *pf = calloc((size_t)np * NBINS, sizeof(float));
-    for (long q = 0; q < np; q++) {
-        for (long s = ph_start[q]; s < ph_start[q + 1]; s++)
-            for (int b = 0; b < NBINS; b++) pf[q * NBINS + b] += feat[s * NBINS + b];
-        float inv = 1.f / (float)(ph_start[q + 1] - ph_start[q]);
-        for (int b = 0; b < NBINS; b++) pf[q * NBINS + b] *= inv;
+    int fd = L->fd;
+    float *desc = calloc((size_t)ns * fd, sizeof(float)); /* shot descriptor = mean of used keyframes */
+    for (long i = 0; i < ns; i++) {
+        for (int a = klo; a < khi; a++)
+            for (int b = 0; b < fd; b++) desc[(size_t)i * fd + b] += kf[((size_t)i * K + a) * fd + b];
+        for (int b = 0; b < fd; b++) desc[(size_t)i * fd + b] /= (float)(khi - klo);
     }
+    float *pf = calloc((size_t)np * fd, sizeof(float));
+    for (long q = 0; q < np; q++) {
+        for (long s2 = ph_start[q]; s2 < ph_start[q + 1]; s2++)
+            for (int b = 0; b < fd; b++) pf[q * fd + b] += desc[s2 * fd + b];
+        float inv = 1.f / (float)(ph_start[q + 1] - ph_start[q]);
+        for (int b = 0; b < fd; b++) pf[q * fd + b] *= inv;
+    }
+    free(desc);
+    float *mean = malloc((size_t)fd * sizeof(float));
     double *best = malloc((np + 1) * sizeof(double));
     long *from = malloc((np + 1) * sizeof(long));
     best[0] = 0;
@@ -174,12 +211,12 @@ int segment_scenes(const float *feat, long ns, int nthreads,
         best[j] = 1e30;
         long lo = j - p->max_phases > 0 ? j - p->max_phases : 0;
         for (long i = lo; i < j; i++) {       /* group = phases [i, j) */
-            float mean[NBINS] = {0};
+            memset(mean, 0, (size_t)fd * sizeof(float));
             for (long q = i; q < j; q++)
-                for (int b = 0; b < NBINS; b++) mean[b] += pf[q * NBINS + b];
-            for (int b = 0; b < NBINS; b++) mean[b] /= (float)(j - i);
+                for (int b = 0; b < fd; b++) mean[b] += pf[q * fd + b];
+            for (int b = 0; b < fd; b++) mean[b] /= (float)(j - i);
             double cost = p->lam_scene;
-            for (long q = i; q < j; q++) cost += chi2(pf + q * NBINS, mean);
+            for (long q = i; q < j; q++) cost += feat_dist(pf + q * fd, mean, L);
             if (best[i] + cost < best[j]) { best[j] = best[i] + cost; from[j] = i; }
         }
     }
@@ -191,6 +228,7 @@ int segment_scenes(const float *feat, long ns, int nthreads,
     out->nscenes = ns_cnt;
     out->nphases = np;
     free(pf);
+    free(mean);
     free(best);
     free(from);
     free(ph_start);

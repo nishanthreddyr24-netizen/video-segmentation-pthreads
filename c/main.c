@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "common.h"
+#include "features.h"
 #include "scenes.h"
 
 int main(int argc, char **argv) {
@@ -22,13 +23,14 @@ int main(int argc, char **argv) {
     }
     const char *mode = argv[4];
     int nt = argc > 5 ? atoi(argv[5]) : 4;
-    int extra = argc > 6 ? atoi(argv[6]) : 0;
+    int is_dump = !strcmp(mode, "featdump");
+    int extra = (argc > 6 && !is_dump) ? atoi(argv[6]) : 0;
     ShotResult r;
     shotresult_alloc(&r, v.n);
 
     int rc;
     if (!strcmp(mode, "seq"))    rc = detect_sequential(&v, &r);
-    else if (!strcmp(mode, "a") || !strcmp(mode, "scenes")) rc = detect_chunked(&v, nt, extra ? extra : 4, &r);
+    else if (!strcmp(mode, "a") || !strcmp(mode, "scenes") || is_dump) rc = detect_chunked(&v, nt, extra ? extra : 4, &r);
     else if (!strcmp(mode, "b")) rc = detect_pipeline(&v, nt, extra ? extra : 64, &r);
     else { fprintf(stderr, "unknown mode\n"); return 1; }
     if (rc) { fprintf(stderr, "detector failed\n"); return 1; }
@@ -50,6 +52,30 @@ int main(int argc, char **argv) {
         fwrite(r.diffs, sizeof(float), v.n, f);
         fclose(f);
     }
+    if (is_dump && argc > 6) {
+        /* cache: i64 ns, i32 K, i32 FD, i64 nframes, i64 start[ns], i64 end[ns],
+         *        f32 kf[ns*K*FD], f32 mean_global_hist[ns*NBINS] */
+        Shot *shots = malloc((r.ncuts + 1) * sizeof(Shot));
+        long ns = shots_from_cuts(r.cuts, r.ncuts, v.n, shots);
+        float *kf = calloc((size_t)ns * KF_PER_SHOT * FD_TOTAL, sizeof(float));
+        double t0 = now_sec();
+        shot_keyframe_features(&v, shots, ns, nt, kf);
+        printf("keyframe features: %ld shots x %d keyframes in %.3fs (%d threads)\n",
+               ns, KF_PER_SHOT, now_sec() - t0, nt);
+        float *mh = malloc((size_t)ns * NBINS * sizeof(float));
+        shot_features(r.hists, shots, ns, mh);
+        FILE *cf = fopen(argv[6], "wb");
+        if (!cf) { fprintf(stderr, "cannot write %s\n", argv[6]); return 1; }
+        int64_t nsl = ns, nfr = v.n;
+        int32_t K = KF_PER_SHOT, FD = FD_TOTAL;
+        fwrite(&nsl, 8, 1, cf); fwrite(&K, 4, 1, cf); fwrite(&FD, 4, 1, cf); fwrite(&nfr, 8, 1, cf);
+        for (long i = 0; i < ns; i++) { int64_t x = shots[i].start; fwrite(&x, 8, 1, cf); }
+        for (long i = 0; i < ns; i++) { int64_t x = shots[i].end; fwrite(&x, 8, 1, cf); }
+        fwrite(kf, sizeof(float), (size_t)ns * KF_PER_SHOT * FD_TOTAL, cf);
+        fwrite(mh, sizeof(float), (size_t)ns * NBINS, cf);
+        fclose(cf);
+        free(shots); free(kf); free(mh);
+    }
     if (!strcmp(mode, "scenes")) {
         Shot *shots = malloc((r.ncuts + 1) * sizeof(Shot));
         long ns = shots_from_cuts(r.cuts, r.ncuts, v.n, shots);
@@ -63,7 +89,8 @@ int main(int argc, char **argv) {
         if (getenv("SCENE_LAMSCENE")) sp.lam_scene = atof(getenv("SCENE_LAMSCENE"));
         if (getenv("SCENE_K"))        sp.k = atoi(getenv("SCENE_K"));
         SceneResult sr;
-        segment_scenes(feat, ns, nt, &sp, &sr);
+        FeatLayout L = layout_global();
+        segment_scenes(feat, ns, 1, 0, 1, &L, nt, &sp, &sr);
         double tot = sr.t_sim + sr.t_dp_thread + sr.t_phase + sr.t_dp_scene;
         printf("shots=%ld phases=%ld scenes=%ld\n", ns, sr.nphases, sr.nscenes);
         printf("scene stages: similarity(par)=%.5fs thread-DP=%.5fs phases=%.6fs scene-DP=%.5fs  serial=%.0f%%\n",

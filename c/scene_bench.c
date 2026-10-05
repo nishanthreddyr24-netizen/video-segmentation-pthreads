@@ -28,11 +28,12 @@ int scene_bench(long ns, int nt, int reps) {
         }
     }
     SceneParams p = scene_defaults();
+    FeatLayout L = layout_global();
     double best[4] = {1e9, 1e9, 1e9, 1e9}, bt = 1e9;
     long nsc = 0;
     for (int r = 0; r < reps; r++) {
         SceneResult sr;
-        segment_scenes(feat, ns, nt, &p, &sr);
+        segment_scenes(feat, ns, 1, 0, 1, &L, nt, &p, &sr);
         double t = sr.t_sim + sr.t_dp_thread + sr.t_phase + sr.t_dp_scene;
         if (t < bt) {
             bt = t;

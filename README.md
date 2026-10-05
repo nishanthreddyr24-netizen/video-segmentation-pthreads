@@ -23,7 +23,8 @@ Measured on an Intel i5-12450HX (8 cores / 12 threads), Windows 11, GCC 16.2 `-O
 - Speedup is near-linear to 4 workers, then limited by growing overhead and contention (rising Karp-Flatt metric), not by serial code.
 - The task-parallel pipeline peaks at 3.8x and then declines.
 - **Shot (cut) detection:** F1 0.91 against an independent detector on Big Buck Bunny. Hard cuts only; fades and dissolves are mostly missed.
-- **Scene segmentation is weak:** F1 about 0.13 on unseen human-labelled videos (random guessing: 0.07). It uses only a colour-histogram feature. The scene layer's dynamic-programming stages are sequential, capping that layer near 2.3x.
+- **Scene segmentation:** F1 about **0.35** at 2 s tolerance on 10 human-labelled videos (95% interval 0.25-0.44, 116 true boundaries), with parameters chosen by leave-one-video-out so no video is scored with parameters tuned on it. The best trivial baseline (every detected cut = boundary) scores 0.17. Most of the improvement over an earlier 0.13 came from better tuning and evaluation, not from richer features; the gain from a spatial grid, edge-orientation and multi-keyframe descriptors over a tuned global histogram (+0.06) is within noise on this small test set. Details: [`results/scene_cv.md`](results/scene_cv.md) and the metric audit [`results/audit_metric.md`](results/audit_metric.md).
+- The scene layer's dynamic-programming stages are sequential, capping that layer near 2.3x.
 
 ## Layout
 
@@ -34,7 +35,8 @@ Measured on an Intel i5-12450HX (8 cores / 12 threads), Windows 11, GCC 16.2 `-O
 | `c/seq.c` | Single-threaded baseline |
 | `c/common.[ch]`, `c/threshold.c` | Timing, HSV histogram, Bhattacharyya distance, adaptive threshold |
 | `c/scenes.[ch]`, `c/scene_bench.c` | Scene layer and its synthetic benchmark |
-| `tools/` | Data generation, evaluation, benchmarks, study and plotting scripts |
+| `c/features.[ch]`, `c/scene_api.c` | Keyframe descriptors (3x3 colour grid, edge orientation; parallel over shots); C entry point for Python |
+| `tools/` | Data generation, evaluation, benchmarks, study and plotting scripts; `audit_metric.py` and `scene_cv.py` for the scene evaluation |
 | `tests/` | Thread-count and chunk-size invariance tests |
 | `results/` | Figures and tables behind the report |
 
@@ -44,7 +46,7 @@ Requires GCC with pthreads (MinGW-w64 on Windows, or any Linux/macOS gcc), Pytho
 
 ```bash
 gcc -O2 -Wall -Wextra -pthread -o c/shotseg c/main.c c/common.c c/threshold.c \
-    c/seq.c c/arch_a.c c/arch_b.c c/scenes.c c/scene_bench.c -lm
+    c/seq.c c/arch_a.c c/arch_b.c c/scenes.c c/scene_bench.c c/features.c -lm
 ```
 
 Videos are decoded once to a headerless raw BGR file so any thread can seek straight to its chunk:
@@ -66,6 +68,14 @@ python -m unittest tests.test_invariance -v
 python tools/study.py && python tools/plot_study.py
 ```
 
+Scene evaluation (needs the RAI videos as raw files and a shared library for Python):
+
+```bash
+gcc -O2 -shared -static -pthread -o c/libscene.dll c/scene_api.c c/scenes.c c/features.c c/common.c -lm
+python tools/audit_metric.py      # label/scorer audit, recall ceiling, baselines
+python tools/scene_cv.py          # leave-one-video-out feature comparison
+```
+
 ## Data
 
 Videos are not included. Experiments used [Big Buck Bunny](https://peach.blender.org/) (Blender Foundation, CC-BY 3.0) and the RAI shot/scene dataset (Baraldi et al.), plus a generated synthetic video. Obtain these separately and respect their licences.
@@ -75,4 +85,4 @@ Videos are not included. Experiments used [Big Buck Bunny](https://peach.blender
 - Frames are pre-decoded, so codec decoding is not in the timings.
 - One machine with a hybrid CPU and a warm file cache; run-to-run variation is about 15%.
 - Classical colour-histogram methods only (no deep models).
-- The scene layer is a simplified version of Liu et al. (2013) with hand-set parameters.
+- The scene layer is a simplified version of Liu et al. (2013): fixed block weights, parameters chosen by cross-validation, no learned features. The scene test set is small (116 boundaries), so differences of a few hundredths in F1 are not distinguishable.

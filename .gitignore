@@ -10,3 +10,5 @@ results/cuts_*.txt
 results/diffs_*.bin
 REPORT.md
 /Report_MultiThreaded_Video_Segmentation.docx
+c/*.dll
+results/scene_cv_log.txt

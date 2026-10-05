@@ -108,7 +108,7 @@ c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 400 },
 
 c.push(H2("Summary"));
 c.push(P("This project splits a video into shots (detecting the frames where the camera cut changes) and groups shots into scenes, and asks how each stage should be parallelised with threads. The primary design is **chunk-based data parallelism** using POSIX threads (pthreads) in C: the video is cut into contiguous chunks, worker threads claim chunks through a mutex-protected counter, and each worker writes only its own slice of the result array."));
-c.push(P("**Main results (11 real videos, 1 to 12 workers, median of 5 runs):** the output is bit-identical at every worker count; throughput rises from about 11,700 to about 60,500 frames per second, a speedup of **5.19x** at 12 workers (3.55x at 4 workers, 89% efficiency). Speedup flattens after about 4 workers; the Karp-Flatt analysis shows this comes from growing overhead and contention, not from serial code. Hard-cut detection agrees well with an independent detector (F1 0.91). **Scene grouping is weak on real human labels** (F1 about 0.13 on held-out videos, close to random guessing); this is reported openly in Section 7.7 and in the limitations."));
+c.push(P("**Main results (11 real videos, 1 to 12 workers, median of 5 runs):** the output is bit-identical at every worker count; throughput rises from about 11,700 to about 60,500 frames per second, a speedup of **5.19x** at 12 workers (3.55x at 4 workers, 89% efficiency). Speedup flattens after about 4 workers; the Karp-Flatt analysis shows this comes from growing overhead and contention, not from serial code. Hard-cut detection agrees well with an independent detector (F1 0.91). **Scene grouping is moderate:** with parameters chosen by leave-one-video-out on all 10 human-labelled videos, boundary F1 is about **0.35** at 2 s tolerance (95% interval 0.25-0.44, 116 true boundaries) against 0.17 for the best trivial baseline. Most of the gain over our earlier 0.13 came from better tuning, not from richer features (Section 7.7)."));
 
 c.push(new Paragraph({ children: [new PageBreak()] }));
 
@@ -191,13 +191,14 @@ c.push(...code("Pseudocode", [
 c.push(P("**Threshold after the merge.** Applying it once on the merged signal means chunk borders cannot create inconsistent thresholds. Rule: d exceeds the mean plus 4 standard deviations of the surrounding 25 frames (centre excluded), exceeds an absolute floor of 0.15, is the local maximum of the window, and cuts closer than 8 frames keep only the stronger."));
 c.push(H2("4.4 Scene layer (simplified Liu et al.)"));
 c.push(table(["Stage", "Description"], [
-  ["1. Similarity", "Chi-square distance between each shot and the next T = 18 shots (shot feature = mean histogram of its frames). Independent per pair, so rows are split across pthreads."],
+  ["0. Keyframe features", "Each shot is described by 3 to 5 keyframes (at 10-90% of the shot). A keyframe descriptor has three blocks: a global HSV histogram, a 3x3 grid of HSV histograms (keeps layout), and a 3x3 grid of edge-orientation histograms (Sobel, magnitude weighted; texture). Computed by worker threads that split the shots between them (data parallel over shots); about 0.04-0.16 s per video with 8 threads."],
+  ["1. Similarity", "Distance between each shot and the next T = 18 shots: weighted mean over blocks of the cell-wise chi-square distance, minimum over keyframe pairs. Independent per pair, so rows are split across pthreads. With 3 keyframes this does 9 distance evaluations per pair, which makes the parallel stage heavier."],
   ["2. Shot-thread inference", "Viterbi DP: each shot chooses a parent among the previous k = 9 shots (allowed only if distance < tau) or starts a new shot thread; switching the parent offset has a small cost."],
   ["3. Phases", "Merge shot threads whose shot spans overlap."],
   ["4. Scenes", "DP that groups consecutive phases into scenes: a cost per scene plus the within-scene distance to the group mean."],
 ], [2200, 7438]));
 c.push(gap());
-c.push(NOTE("**Simplifications.** Liu et al. learn the distance and weights with EM and MI-SVM; that is **not implemented**. We use a fixed chi-square distance with hand-set parameters. No public code exists for that paper, so the DP is **our interpretation of its structure** (parent assignment with a jump limit, phases, second DP) and was not checked line by line against its equations."));
+c.push(NOTE("**Simplifications.** Liu et al. learn the distance and weights with EM and MI-SVM; that is **not implemented**. We use a fixed chi-square distance, equal block weights (1:1:1), and parameters chosen by cross-validation (Section 7.7). No public code exists for that paper, so the DP is **our interpretation of its structure** (parent assignment with a jump limit, phases, second DP) and was not checked line by line against its equations."));
 
 // 5
 c.push(H1("5. Core code"));
@@ -208,7 +209,9 @@ c.push(...code("arch_a.c - one chunk: overlap frame, then histogram and distance
 c.push(...code("arch_a.c - worker thread: claims chunks through a mutex-protected counter", extractFn("arch_a.c", /^static void \*worker/)));
 c.push(...code("arch_a.c - creating and joining the worker threads, then the serial threshold", extractFn("arch_a.c", /^int detect_chunked/)));
 c.push(...code("threshold.c - adaptive threshold (serial stage, O(1) window statistics via prefix sums)", extractFn("threshold.c", /^long adaptive_threshold/)));
-c.push(...code("scenes.c - scene stage 1: parallel similarity worker (data parallel over rows)", extractFn("scenes.c", /^static void \*sim_worker/)));
+c.push(...code("features.c - keyframe feature worker: each thread describes the keyframes of its own shots", extractFn("features.c", /^static void \*kf_worker/)));
+c.push(...code("scenes.c - descriptor distance (weighted blocks of cell-wise chi-square)", extractFn("scenes.c", /^static float feat_dist/)));
+c.push(...code("scenes.c - scene stage 1: parallel similarity worker (data parallel over rows, min over keyframe pairs)", extractFn("scenes.c", /^static void \*sim_worker/)));
 c.push(...code("arch_b.c (comparison) - bounded queue insert: producer/consumer with condition variables", extractFn("arch_b.c", /^static void q_put/)));
 c.push(...code("arch_b.c (comparison) - bounded queue remove", extractFn("arch_b.c", /^static Item q_get/)));
 
@@ -316,17 +319,36 @@ c.push(...figure("e6_scenes.png", "Figure 7. Share of scene-layer time spent in 
 c.push(P("With 1 million shots the parallel similarity stage speeds up about 4.5x at 8 workers (1.27 s to 0.28 s), but the DP stages barely move (0.75 s to 0.59 s). The layer as a whole is capped near 2.3x, close to the Amdahl bound of 1/0.37 = 2.7x for a 37% serial fraction. The phases-to-scenes DP is the largest serial cost. For a typical video (about 240 shots) the scene layer takes well under a millisecond, so end-to-end speed is set by the shot stage; the scene layer's serial cost matters only for very long inputs."));
 
 c.push(H2("7.7 Accuracy of scene grouping on human labels"));
-c.push(P("The RAI dataset provides human-marked scene boundaries for 10 videos. Scene boundaries have no standard tolerance, so F1 is reported at 1, 2 and 5 seconds. To avoid fooling ourselves, parameters were tuned on **videos 1-5 only** and scored once on the untouched **videos 6-10**. Random boundaries (given the true number of scenes) are the chance baseline."));
-c.push(table(["Setting", "F1 at 1 s", "F1 at 2 s", "F1 at 5 s", "P / R at 2 s"], [
-  ["Default parameters, all 10 videos", "0.105", "0.105", "0.144", "0.22 / 0.07"],
-  ["Tuned on videos 1-5, scored on the same 5 (optimistic)", "0.365", "0.446", "0.514", "0.40 / 0.51"],
-  ["**Same parameters, unseen videos 6-10 (honest)**", "0.067", "**0.133**", "0.200", "0.15 / 0.12"],
-  ["Random boundaries, videos 6-10", "-", "0.073", "0.171", "-"],
-  ["Evenly spaced boundaries, videos 6-10", "-", "0.039", "0.118", "-"],
-], [4100, 1100, 1300, 1100, 2038], { center: true }));
+c.push(H2("Metric audit (done before tuning)"));
+c.push(P("The RAI dataset provides human-marked scene boundaries for 10 videos. Before tuning anything we audited the evaluation (`tools/audit_metric.py`, output in `results/audit_metric.md`):"));
+c.push(B("**Labels are aligned.** No gaps between scenes, and each video's last labelled frame equals its frame count."));
+c.push(B("**The test set is small:** 126 scenes, **116 true boundaries** over 10 videos. One video can move a pooled score a lot, so every number carries a resampling interval."));
+c.push(B("**The scorer is correct.** A clean re-implementation (optimal one-to-one matching) reproduces the earlier scores exactly (0.105 / 0.105 / 0.144 at 1 / 2 / 5 s for the default parameters)."));
+c.push(B("**Shot detection is not the bottleneck:** 91% of true scene boundaries lie within 2 s of a detected cut (97% within 5 s; 84% within 1 s)."));
+c.push(B("**The earlier random baseline was too weak.** Calling every detected cut a scene boundary scores F1 0.167 at 2 s, and evenly spaced scenes score 0.172 at 5 s. A scene method has to beat these, not random guessing."));
+c.push(B("Coverage/overflow was also tried and dropped: our implementation could not be verified against a reference and gave implausible values."));
+c.push(H2("Leave-one-video-out comparison of features"));
+c.push(P("For each feature set and each video, the scene parameters (tau, new-thread cost, parent-switch cost, new-scene cost, maximum phases per scene; 672 combinations) are chosen **only on the other 9 videos** by maximising pooled F1 at 2 s, then scored on the held-out video. Results are pooled over the 10 held-out videos. The main method, fixed in advance, is the full descriptor with 3 keyframes; the other rows are ablations."));
+c.push(table(["Features", "F1 1 s", "F1 2 s", "F1 5 s", "P / R at 2 s", "Pred. / true scenes", "F1 2 s interval"], [
+  ["Old method (mean global histogram), properly tuned", "0.219", "0.287", "0.362", "0.26 / 0.33", "159 / 126", "0.20-0.36"],
+  ["Global histogram, 1 keyframe", "0.249", "0.304", "0.405", "0.28 / 0.34", "151 / 126", "0.22-0.36"],
+  ["Global histogram, 3 keyframes", "0.242", "0.304", "0.394", "0.25 / 0.38", "183 / 126", "0.23-0.36"],
+  ["Spatial 3x3 colour grid, 3 keyframes", "0.247", "0.290", "0.328", "0.19 / 0.59", "363 / 126", "0.23-0.35"],
+  ["Edge orientation 3x3, 3 keyframes", "0.161", "0.239", "0.367", "0.18 / 0.37", "254 / 126", "0.17-0.32"],
+  ["Spatial + edge, 3 keyframes", "0.192", "0.244", "0.347", "0.21 / 0.28", "165 / 126", "0.17-0.31"],
+  ["**Full: global + spatial + edge, 3 keyframes (main)**", "0.284", "**0.348**", "0.468", "0.30 / 0.42", "176 / 126", "0.25-0.44"],
+  ["Full, 5 keyframes (post-hoc ablation)", "0.296", "0.361", "0.462", "0.31 / 0.43", "171 / 126", "0.27-0.45"],
+  ["Baseline: every detected cut is a boundary", "0.156", "0.167", "0.179", "0.09 / 0.91", "-", "0.13-0.21"],
+  ["Baseline: evenly spaced, true number of scenes", "0.017", "0.043", "0.172", "0.04 / 0.04", "-", "0.01-0.07"],
+], [3000, 700, 800, 700, 1100, 1250, 2088], { center: true }));
 c.push(gap());
-c.push(NOTE("**Reading this honestly.** The 0.446 score was measured on the same videos used for tuning and does not transfer. On unseen videos the scene layer scores about 0.13 at 2 s, only slightly above random guessing (0.07). Of every 100 boundaries it outputs about 15 are right, and it finds about 12 of every 100 true ones. The scene layer is not accurate on real footage with the features used here."));
-c.push(P("**Why scene grouping is hard here.** A cut is visual; a scene boundary is about meaning (a change of topic or place). Our only feature is a 64-bucket colour histogram, which cannot capture meaning. Liu et al. report F1 of 0.67-0.72 using learned features on movies and TV drama, which is not comparable to our setting. Improving the features (for example a grid of histograms) evaluated by cross-validation over all 10 videos is the natural next step and is not part of these results."));
+c.push(H2("Interpretation"));
+c.push(B("**The honest scene score is now about 0.35 (F1 at 2 s), not 0.13.** Most of that change is better tuning and evaluation, not better features: the old method scores 0.29 when tuned over 10 videos with held-out testing. The earlier 0.13 came from tuning on only 5 videos with a small grid, so the two numbers are not directly comparable."));
+c.push(B("**Richer features help only a little, and the evidence is weak.** The full descriptor beats the old method by about 0.06, but the intervals overlap heavily; with 116 boundaries this is not a proven gain. One keyframe with the plain histogram already reaches 0.30. The spatial grid alone (0.29) and the edge feature alone (0.24) did not help; only the combination did."));
+c.push(B("**It now clearly beats the trivial baselines** (every-cut 0.167, interval 0.13-0.21), which is the real bar."));
+c.push(B("**It still over-splits:** 176 predicted scenes against 126 true ones."));
+c.push(B("**Remaining optimism.** About 8 feature sets x 672 parameter sets were searched. The held-out protocol removes tuning leakage, but reporting the best row would still be mildly optimistic, which is why the main method was fixed in advance. The 5-keyframe row is a post-hoc extra. The chosen new-scene cost was the same in every fold and is not at the edge of the (widened) grid."));
+c.push(P("**Why scene grouping stays hard.** A cut is visual; a scene boundary is about meaning (a change of topic or place). Colour and edge statistics cannot capture meaning. Liu et al. report F1 of 0.67-0.72 using learned features on movies and TV drama, which is not comparable to this setting. Learned embeddings are the next step and are not part of this work."));
 
 // 8
 curList = "num2";
@@ -343,13 +365,13 @@ c.push(B("**One machine, one hybrid CPU, warm file cache.** Numbers are not port
 c.push(B("**Cause of the plateau unproven.** The hybrid-core explanation was not tested with affinity or hardware counters."));
 c.push(B("**Classical detector only.** No deep model; gradual transitions (fades, dissolves) are mostly missed."));
 c.push(B("**Cut accuracy** on real footage was compared with another classical detector, not human labels; PySceneDetect was not run."));
-c.push(B("**Scene layer** is a simplified Liu et al. (no EM or MI-SVM, hand-set parameters, DP is our interpretation). Its accuracy on human labels is close to chance (F1 about 0.13 on held-out videos)."));
+c.push(B("**Scene layer** is a simplified Liu et al. (no EM or MI-SVM, fixed 1:1:1 block weights, DP is our interpretation). On human labels it reaches F1 about 0.35 at 2 s tolerance (interval 0.25-0.44) on a small test set of 116 boundaries; the gain from richer classical features over a tuned global histogram is not statistically established."));
 c.push(B("**Supporting studies** (chunk size, resolution) are single runs on one video."));
 c.push(B("**Literature** not fully verified against full texts."));
 
 // 10
 c.push(H1("10. Conclusion"));
-c.push(P("A chunk-based data-parallel design in C with POSIX threads, per-thread file handles, a mutex-guarded chunk counter and a post-merge threshold produces bit-identical results at every worker count and reaches about 5.2x speedup (60,000 frames per second against 11,700) on a 12-thread CPU across 11 real videos. Scaling is near-linear to 4 workers and then limited by overhead and contention, not serial code. A task-parallel pipeline scaled worse (peak 3.8x). Hard-cut detection agrees well with an independent detector (F1 0.91). The scene layer's similarity stage parallelises, but its dynamic-programming stages do not, capping that layer near 2.3x; and its accuracy against human scene labels is weak, which we report rather than hide."));
+c.push(P("A chunk-based data-parallel design in C with POSIX threads, per-thread file handles, a mutex-guarded chunk counter and a post-merge threshold produces bit-identical results at every worker count and reaches about 5.2x speedup (60,000 frames per second against 11,700) on a 12-thread CPU across 11 real videos. Scaling is near-linear to 4 workers and then limited by overhead and contention, not serial code. A task-parallel pipeline scaled worse (peak 3.8x). Hard-cut detection agrees well with an independent detector (F1 0.91). The scene layer's similarity stage parallelises, but its dynamic-programming stages do not, capping that layer near 2.3x; and with leave-one-video-out tuning its accuracy against human scene labels is moderate (F1 about 0.35 at 2 s, against 0.17 for the best trivial baseline), with richer classical features adding little beyond tuning."));
 
 // Appendix
 c.push(H1("Appendix A. Project files and how to run"));
@@ -360,15 +382,17 @@ c.push(table(["File", "Purpose"], [
   ["c/arch_a.c", "Architecture A: data-parallel chunk workers (main design)"],
   ["c/arch_b.c", "Architecture B: reader/queue/workers/merger pipeline (comparison)"],
   ["c/scenes.[ch], c/scene_bench.c", "scene layer and its synthetic benchmark"],
+  ["c/features.[ch], c/scene_api.c", "keyframe descriptors (parallel over shots); flat C entry point used by Python"],
   ["c/main.c", "command-line front end"],
-  ["tools/gen_synth.py, evaluate.py, eval_rai.py, tune_scenes.py", "synthetic data, F1 scoring, RAI evaluation, parameter search"],
+  ["tools/gen_synth.py, evaluate.py, eval_rai.py, tune_scenes.py", "synthetic data, F1 scoring, RAI evaluation, early parameter search"],
+  ["tools/scene_metrics.py, scene_lib.py, audit_metric.py, scene_cv.py", "scene metrics, ctypes access to the C scene layer, metric audit, leave-one-video-out study"],
   ["tools/study.py, plot_study.py, benchmark.py", "main worker study, figure and table, supporting experiments"],
   ["tests/test_invariance.py", "thread-count and chunk-size invariance tests"],
 ], [3600, 6038]));
 c.push(gap());
 c.push(...code("Build and run (bash, with D:\\tools\\mingw64\\bin on PATH)", [
   "gcc -O2 -Wall -Wextra -pthread -o c/shotseg.exe c/main.c c/common.c c/threshold.c \\",
-  "    c/seq.c c/arch_a.c c/arch_b.c c/scenes.c c/scene_bench.c -lm",
+  "    c/seq.c c/arch_a.c c/arch_b.c c/scenes.c c/scene_bench.c c/features.c -lm",
   "",
   "c/shotseg.exe data/bbb_160x90.raw 160 90 a 8      # Architecture A, 8 workers",
   "                                       modes: seq | a | b | scenes",
