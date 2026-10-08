@@ -58,6 +58,22 @@ def macro_f1(count_list, tol):
     return float(np.mean([prf_from_counts(*c[tol])[2] for c in count_list]))
 
 
+def miou(pred_starts, gt_scenes, n_frames):
+    """Symmetric intersection-over-union measure M_iou of Baraldi et al. (ACM MM 2015),
+    computed in frames: for every ground-truth scene take the best IoU with a detected scene,
+    average; do the same for detected scenes against ground truth; average the two."""
+    starts = sorted(set([0] + list(pred_starts)))
+    det = list(zip(starts, starts[1:] + [n_frames]))
+
+    def iou(a, b):
+        inter = max(0, min(a[1], b[1]) - max(a[0], b[0]))
+        return inter / ((a[1] - a[0]) + (b[1] - b[0]) - inter)
+
+    g = np.mean([max(iou(s, d) for d in det) for s in gt_scenes])
+    d = np.mean([max(iou(x, s) for s in gt_scenes) for x in det])
+    return float(0.5 * (g + d))
+
+
 def bootstrap_ci(count_list, tol, n_boot=2000, seed=0):
     """95% interval of pooled F1 when whole VIDEOS are resampled with replacement."""
     rng = np.random.default_rng(seed)

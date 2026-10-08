@@ -1,0 +1,20 @@
+DP (shot-thread) | legacy: mean global hist (old method) 0.287
+DP (shot-thread) | global hist, 1 keyframe 0.304
+DP (shot-thread) | FULL: global + spatial + edge, 3 keyframes 0.348
+Spectral clustering | legacy: mean global hist (old method) 0.244
+Spectral clustering | global hist, 1 keyframe 0.251
+Spectral clustering | FULL: global + spatial + edge, 3 keyframes 0.311
+# Classical scene detection: DP vs spectral clustering, leave-one-video-out
+
+Parameters chosen on 9 videos (DP: 672 combinations; spectral: 84), scored on the 10th. Pooled over 10 held-out videos (116 boundaries). M_iou is the mean per-video symmetric IoU measure of Baraldi et al. (2015).
+
+| method | features | F1 @1 s | F1 @2 s | F1 @5 s | F1@2 s interval | M_iou | pred / true scenes |
+|---|---|---|---|---|---|---|---|
+| DP (shot-thread) | legacy: mean global hist (old method) | 0.219 | 0.287 | 0.362 | 0.20-0.36 | 0.430 | 159 / 126 |
+| DP (shot-thread) | global hist, 1 keyframe | 0.249 | 0.304 | 0.405 | 0.22-0.36 | 0.453 | 151 / 126 |
+| DP (shot-thread) | FULL: global + spatial + edge, 3 keyframes | 0.284 | 0.348 | 0.468 | 0.25-0.44 | 0.527 | 176 / 126 |
+| Spectral clustering | legacy: mean global hist (old method) | 0.203 | 0.244 | 0.322 | 0.20-0.29 | 0.432 | 279 / 126 |
+| Spectral clustering | global hist, 1 keyframe | 0.201 | 0.251 | 0.337 | 0.19-0.30 | 0.445 | 292 / 126 |
+| Spectral clustering | FULL: global + spatial + edge, 3 keyframes | 0.263 | 0.311 | 0.379 | 0.24-0.38 | 0.473 | 274 / 126 |
+| *baseline* | *every detected cut = boundary* | 0.156 | 0.167 | 0.179 | 0.13-0.21 | 0.231 | - |
+| *baseline* | *evenly spaced, true #scenes* | 0.017 | 0.043 | 0.172 | 0.01-0.07 | 0.432 | - |

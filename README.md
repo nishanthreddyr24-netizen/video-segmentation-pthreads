@@ -24,6 +24,7 @@ Measured on an Intel i5-12450HX (8 cores / 12 threads), Windows 11, GCC 16.2 `-O
 - The task-parallel pipeline peaks at 3.8x and then declines.
 - **Shot (cut) detection:** F1 0.91 against an independent detector on Big Buck Bunny. Hard cuts only; fades and dissolves are mostly missed.
 - **Scene segmentation:** F1 about **0.35** at 2 s tolerance on 10 human-labelled videos (95% interval 0.25-0.44, 116 true boundaries), with parameters chosen by leave-one-video-out so no video is scored with parameters tuned on it. The best trivial baseline (every detected cut = boundary) scores 0.17. Most of the improvement over an earlier 0.13 came from better tuning and evaluation, not from richer features; the gain from a spatial grid, edge-orientation and multi-keyframe descriptors over a tuned global histogram (+0.06) is within noise on this small test set. Details: [`results/scene_cv.md`](results/scene_cv.md) and the metric audit [`results/audit_metric.md`](results/audit_metric.md).
+- A simple classical alternative (spectral clustering of the shot-similarity matrix, the baseline of Baraldi et al. 2015) scored lower under the same protocol (F1 0.31, M_iou 0.47 against 0.35 and 0.53), see [`results/scene_compare.md`](results/scene_compare.md). Audio and transcript cues, which that paper found useful, were not tried.
 - The scene layer's dynamic-programming stages are sequential, capping that layer near 2.3x.
 
 ## Layout
@@ -74,6 +75,7 @@ Scene evaluation (needs the RAI videos as raw files and a shared library for Pyt
 gcc -O2 -shared -static -pthread -o c/libscene.dll c/scene_api.c c/scenes.c c/features.c c/common.c -lm
 python tools/audit_metric.py      # label/scorer audit, recall ceiling, baselines
 python tools/scene_cv.py          # leave-one-video-out feature comparison
+python tools/scene_compare.py     # DP vs spectral clustering, adds the M_iou metric
 ```
 
 ## Data

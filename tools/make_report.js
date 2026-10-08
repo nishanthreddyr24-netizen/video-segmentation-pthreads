@@ -348,6 +348,21 @@ c.push(B("**Richer features help only a little, and the evidence is weak.** The 
 c.push(B("**It now clearly beats the trivial baselines** (every-cut 0.167, interval 0.13-0.21), which is the real bar."));
 c.push(B("**It still over-splits:** 176 predicted scenes against 126 true ones."));
 c.push(B("**Remaining optimism.** About 8 feature sets x 672 parameter sets were searched. The held-out protocol removes tuning leakage, but reporting the best row would still be mildly optimistic, which is why the main method was fixed in advance. The 5-keyframe row is a post-hoc extra. The chosen new-scene cost was the same in every fold and is not at the edge of the (widened) grid."));
+c.push(H2("Comparison with a simple classical baseline"));
+c.push(P("To check that the shot-thread DP is a reasonable classical choice, we also ran spectral clustering of the shot-similarity matrix with a temporal kernel. This is the simple baseline of Baraldi et al. (ACM MM 2015), which they found superior or equivalent to two published classical methods (an audio-visual shot-transition graph and colour clustering with sequence alignment) on BBC Planet Earth. Same features, same leave-one-video-out protocol (84 parameter combinations for spectral clustering against 672 for the DP). M_iou is the symmetric intersection-over-union measure from that paper."));
+c.push(table(["Method", "Features", "F1 2 s", "F1 2 s interval", "M_iou", "Pred. / true scenes"], [
+  ["**DP (ours)**", "**Full, 3 keyframes**", "**0.348**", "0.25-0.44", "**0.527**", "176 / 126"],
+  ["Spectral clustering", "Full, 3 keyframes", "0.311", "0.24-0.38", "0.473", "274 / 126"],
+  ["DP", "Old (mean global histogram)", "0.287", "0.20-0.36", "0.430", "159 / 126"],
+  ["Spectral clustering", "Old (mean global histogram)", "0.244", "0.20-0.29", "0.432", "279 / 126"],
+  ["Baseline: evenly spaced (true number of scenes)", "-", "0.043", "0.01-0.07", "0.432", "-"],
+  ["Baseline: every detected cut", "-", "0.167", "0.13-0.21", "0.231", "-"],
+], [2600, 2300, 900, 1400, 900, 1538], { center: true }));
+c.push(gap());
+c.push(B("**The DP is at least as good as the simple classical baseline on both metrics**, so switching to spectral clustering would not help. The two intervals overlap, so the ranking is suggestive, not proven."));
+c.push(B("Spectral clustering over-segments much more (about 275 predicted scenes against 126 true) because cluster labels switch back and forth between neighbouring shots. Our version is our own implementation of the described baseline, not the authors' code."));
+c.push(B("M_iou rewards even spacing (0.432), and that baseline is given the true number of scenes. By M_iou the old features and the spectral variant are no better than that oracle baseline; only the full-feature DP (0.527) is clearly above it."));
+c.push(B("**Untested classical cue:** in the same paper the strongest system added the speech transcript (text topic information) to the visual features. We did not use audio or transcripts; that is the most promising classical extension and is listed as future work."));
 c.push(P("**Why scene grouping stays hard.** A cut is visual; a scene boundary is about meaning (a change of topic or place). Colour and edge statistics cannot capture meaning. Liu et al. report F1 of 0.67-0.72 using learned features on movies and TV drama, which is not comparable to this setting. Learned embeddings are the next step and are not part of this work."));
 
 // 8
@@ -385,7 +400,7 @@ c.push(table(["File", "Purpose"], [
   ["c/features.[ch], c/scene_api.c", "keyframe descriptors (parallel over shots); flat C entry point used by Python"],
   ["c/main.c", "command-line front end"],
   ["tools/gen_synth.py, evaluate.py, eval_rai.py, tune_scenes.py", "synthetic data, F1 scoring, RAI evaluation, early parameter search"],
-  ["tools/scene_metrics.py, scene_lib.py, audit_metric.py, scene_cv.py", "scene metrics, ctypes access to the C scene layer, metric audit, leave-one-video-out study"],
+  ["tools/scene_metrics.py, scene_lib.py, audit_metric.py, scene_cv.py, scene_compare.py", "scene metrics (incl. M_iou), ctypes access to the C scene layer, metric audit, leave-one-video-out study, DP vs spectral clustering"],
   ["tools/study.py, plot_study.py, benchmark.py", "main worker study, figure and table, supporting experiments"],
   ["tests/test_invariance.py", "thread-count and chunk-size invariance tests"],
 ], [3600, 6038]));
@@ -414,6 +429,7 @@ c.push(NOTE("Reference details come from the project brief and recollection; ver
   "Soucek, T., Lokoc, J. (2020). TransNet V2: An effective deep network architecture for fast shot transition detection. arXiv:2008.04838.",
   "Rao, A. et al. (2020). A local-to-global approach to multi-modal movie scene segmentation. CVPR.",
   "Baraldi, L., Grana, C., Cucchiara, R. (2015). Shot and scene detection via hierarchical clustering for re-using broadcast video. (RAI dataset).",
+  "Baraldi, L., Grana, C., Cucchiara, R. (2015). A deep siamese network for scene detection in broadcast videos. ACM Multimedia (MM 15), arXiv:1510.08893. (source of the spectral-clustering baseline and the M_iou measure).",
   "Blender Foundation. Big Buck Bunny (2008), Creative Commons Attribution 3.0.",
 ].forEach((t) => c.push(NR(t)));
 
