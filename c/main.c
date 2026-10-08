@@ -9,7 +9,19 @@
 #include "features.h"
 #include "scenes.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 int main(int argc, char **argv) {
+#ifdef _WIN32
+    /* OS-level studies: SHOTSEG_AFFINITY=<hex mask of logical CPUs> pins the whole process
+     * (all its threads inherit it); SHOTSEG_PRIORITY=high raises the priority class. */
+    const char *am = getenv("SHOTSEG_AFFINITY");
+    if (am && *am) SetProcessAffinityMask(GetCurrentProcess(), (DWORD_PTR)strtoull(am, NULL, 16));
+    const char *pr = getenv("SHOTSEG_PRIORITY");
+    if (pr && !strcmp(pr, "high")) SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
+#endif
     if (argc >= 5 && !strcmp(argv[1], "scenebench")) /* scenebench N threads reps */
         return scene_bench(atol(argv[2]), atoi(argv[3]), atoi(argv[4]));
     if (argc < 5) {

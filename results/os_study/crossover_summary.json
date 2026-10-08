@@ -1,0 +1,41 @@
+{
+ "t1_us": 84.65322528459821,
+ "per_P": {
+  "2": {
+   "fixed_cost_us": 434.5,
+   "breakeven_frames": 12,
+   "two_x_frames": null,
+   "ninety_pct_frames": 96,
+   "model_frames": 10.995811347293937,
+   "best_speedup": 1.9117197672183595,
+   "work_ms_at_breakeven": 0.8257
+  },
+  "4": {
+   "fixed_cost_us": 430.7,
+   "breakeven_frames": 12,
+   "two_x_frames": 48,
+   "ninety_pct_frames": 8192,
+   "model_frames": 7.538906777025559,
+   "best_speedup": 3.241476295846543,
+   "work_ms_at_breakeven": 0.8257
+  },
+  "8": {
+   "fixed_cost_us": 667.8,
+   "breakeven_frames": 16,
+   "two_x_frames": 48,
+   "ninety_pct_frames": 1024,
+   "model_frames": 10.34492651333831,
+   "best_speedup": 4.323827154439951,
+   "work_ms_at_breakeven": 1.118
+  },
+  "12": {
+   "fixed_cost_us": 893.5,
+   "breakeven_frames": 24,
+   "two_x_frames": 48,
+   "ninety_pct_frames": 2048,
+   "model_frames": 13.38547732858061,
+   "best_speedup": 5.005632482641786,
+   "work_ms_at_breakeven": 1.7574
+  }
+ }
+}

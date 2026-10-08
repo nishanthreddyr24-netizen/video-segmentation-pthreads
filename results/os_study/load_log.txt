@@ -1,0 +1,10 @@
+all before: ac_power=yes battery=100% background_cpu_load=92.4%
+all after:  ac_power=yes battery=100% background_cpu_load=85.4%
+p4 before: ac_power=yes battery=100% background_cpu_load=98.8%
+p4 after:  ac_power=yes battery=100% background_cpu_load=83.2%
+e4 before: ac_power=yes battery=100% background_cpu_load=38.1%
+e4 after:  ac_power=yes battery=100% background_cpu_load=34.0%
+core8 before: ac_power=yes battery=100% background_cpu_load=31.8%
+core8 after:  ac_power=yes battery=100% background_cpu_load=70.2%
+c1 before: ac_power=yes battery=100% background_cpu_load=20.2%
+c1 after:  ac_power=yes battery=100% background_cpu_load=30.1%

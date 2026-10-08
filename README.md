@@ -27,6 +27,26 @@ Measured on an Intel i5-12450HX (8 cores / 12 threads), Windows 11, GCC 16.2 `-O
 - A simple classical alternative (spectral clustering of the shot-similarity matrix, the baseline of Baraldi et al. 2015) scored lower under the same protocol (F1 0.31, M_iou 0.47 against 0.35 and 0.53), see [`results/scene_compare.md`](results/scene_compare.md). Audio and transcript cues, which that paper found useful, were not tried.
 - The scene layer's dynamic-programming stages are sequential, capping that layer near 2.3x.
 
+## Operating-system-level study
+
+The focus of the project is how the data-parallel workload uses the operating system and the hardware. Two laptops were measured with the same harness; the Device 1 harness and measurements are by [`zhaymn`](https://github.com/zhaymn) (`tools/osbench.c`, `results/os_analysis/`), Device 2 (i5-12450HX, 4 P-cores with hyper-threading + 4 E-cores) was measured with `tools/osstudy.c`.
+
+| Study | Main finding (Device 2 unless stated) |
+|---|---|
+| Data size / break-even (`results/os_study/crossover.*`) | A fixed number of workers beats a pure sequential loop from **12 to 24 frames** of 160x90 video (about 1-2 ms of work); 2x from 48 frames; 5.0x at 14,000 frames. Device 1: break-even at 8 frames, 6.8x. |
+| Overhead (`overhead.*`) | Fixed cost of one parallel run about 430 us (2-4 workers) to 890 us (12 workers). |
+| Efficient reading (`readeff.*`) | Reading costs about 19% of one worker's speed; memory-mapping recovers most of it (+13% over `fread` at 12 workers); batching reads helps 3-11%; the file cache is never the bottleneck. |
+| Scaling by CPU set (`os_study.png`) | P-cores scale almost perfectly (4 cores: 3.8x), a hyper-thread adds about 12% of a core, an E-core about half to 0.6 of a P-core thread: the plateau (6.6x with all 12 CPUs) is the capacity of the machine, not threading overhead. One CPU: 1.0x. |
+| Worker level (`workers.*`) | Dynamic chunk claiming balances mixed-speed cores; threads migrate across about 3 logical CPUs. |
+| Main study | 5.17x at 12 workers with the baseline pinned to the fastest P-core thread (5.19x on 11 videos). |
+
+The full write-up is [`docs/Final_Report_OS_Study_Video_Segmentation.docx`](docs/Final_Report_OS_Study_Video_Segmentation.docx). Measurements on a shared laptop use high priority, interleaved rounds and best-of-N; a first attempt at the crossover study was discarded (see the report and `results/os_study/invalid_try1/`).
+
+```bash
+python tools/run_all_os.py --level 1 --robust      # ~20 min, works while you keep using the laptop
+python tools/report_data.py && node tools/make_final_report.js
+```
+
 ## Layout
 
 | Path | Purpose |

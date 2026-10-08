@@ -1,0 +1,1 @@
+ac_power=yes battery=100% background_cpu_load=97.0%

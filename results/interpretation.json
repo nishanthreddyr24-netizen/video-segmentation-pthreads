@@ -1,0 +1,49 @@
+{
+ "main": [
+  "**Near-linear to 4 workers, then a bend.** With the baseline pinned to the fastest performance-core thread, speedup is 3.4x at 4 workers (86% efficiency), 4.6x at 8 and 5.2x at 12 (43% efficiency), i.e. from 12,900 to 67,700 frames per second on four videos (best of 7 runs). The first study, on all 11 videos (median of 5 runs, unpinned baseline), gave 5.19x at 12 workers, which agrees.",
+  "**The shortfall is not serial code.** The Karp-Flatt serial fraction rises from 5.4% at 4 workers to 12.0% at 12; a fixed serial part would keep it constant. The only serial step, the threshold, takes about 20 microseconds. Sections 5.4 to 5.7 show where the rest goes: the extra workers run on slower resources (hyper-thread siblings and efficiency cores).",
+  "**Baseline check.** The unpinned baseline was only about 1% slower than the one pinned to the fastest performance-core thread, so the speedup at 12 workers is 5.17x against the pinned and 5.24x against the unpinned baseline: the headline was not inflated on this machine. On Device 1, `zhaymn` observed Windows putting the unpinned baseline on an efficiency core, so this effect depends on the machine and the run, and the baseline should always be pinned."
+ ],
+ "sets": [
+  "**Performance cores scale almost perfectly, one core at a time:** 2 cores give 2.06x, 3 cores 3.21x and 4 cores (one thread each) 3.78x, 94% of ideal. Extra workers beyond the number of cores add nothing and cost almost nothing.",
+  "**A hyper-thread sibling adds only about 12% of a core:** 8 threads on the 4 performance cores give 4.24x against 3.78x with one thread per core.",
+  "**Each efficiency core adds about half to 0.6 of a performance-core thread:** one E-core thread ran at 5.6k frames per second against 11.7k for the fastest P-core thread, and four E-cores together give 2.3x.",
+  "**The plateau is the capacity of the machine.** Adding what the pieces contribute, 3.78 (four P-cores) + 0.46 (their hyper-threads) + 2.3 (four E-cores) = about 6.5x, which matches the 6.6x measured with all 12 CPUs. Threading overhead is not what ends the scaling.",
+  "**One single logical CPU: 1.0x for 1 to 12 workers.** Threads that share one CPU add no speed, and time-slicing 12 of them costs under 3%: more threads than CPUs is harmless but useless.",
+  "**With placement left to the scheduler, 4 workers reach only 2.5x, against 3.8x when pinned one per performance core.** Windows does not always put four workers on four separate performance cores; each worker visited about three different logical CPUs (Section 5.7).",
+  "**One hardware thread on each of the 8 physical cores (4P + 4E): 5.0x** against an ideal of about 6.1x. This test harness splits the frames equally between workers, so the slower E-core workers finish last; the real detector claims chunks dynamically and avoids that (Section 5.7)."
+ ],
+ "readeff": [
+  "**Reading costs about 19% of single-thread speed.** One worker reaches 12.5k frames per second with `fread` against a 15.3k ceiling with no file access at all.",
+  "**Memory-mapping recovers most of it:** 14.4k frames per second with one worker (94% of the ceiling), 69.0k with 8 workers (97%) and 83.0k with 12 workers (90%), which is 13% above `fread` at 12 workers. The mapping removes the read call and the copy.",
+  "**Reading larger batches helps a little:** 16 frames per `fread` call gives +8% with one worker and +11% with four, but only +3 to +5% with 8 to 12 workers; Win32 `ReadFile` with a sequential hint is about the same as `fread`; prefetching the mapped range did not help.",
+  "**The file cache is never the bottleneck here.** Reading alone costs 9 microseconds per frame against about 80 microseconds for the whole frame, and it tops out near 270k frames per second (about 11.7 GB/s), several times what the detector needs (about 75k frames per second, 3.2 GB/s).",
+  "**Kernel time grows with the worker count** (24% of CPU time at 8 workers with `fread`, against 18% for the no-read ceiling, whose kernel time is thread start-up and page faults), but the larger effect on scaling is core type, not the read path."
+ ],
+ "workers": [
+  "**With threads free to move (all 12 CPUs) every worker processed exactly the same number of frames** (500 each at 12 workers): the operating system time-slices and migrates threads, so each worker spent about 71% of its chunks on performance cores and 29% on efficiency cores, and visited about 3.2 different logical CPUs.",
+  "**With the process restricted to one hardware thread per physical core (4 performance + 4 efficiency CPUs) and 8 workers, the chunk counter did the balancing:** workers that sat on performance cores took up to 939 frames and workers on efficiency cores 562, a ratio of 1.67 that matches the speed ratio of the two core types. Dynamic chunk claiming is what keeps a machine with mixed core speeds busy.",
+  "**Four workers on one logical CPU** finished in 0.81 s, about the sequential time, with the frames shared unevenly (750 to 1875): time-slicing, no speedup.",
+  "**Kernel time is 22 to 44% of each worker's CPU time** and grows with the number of workers (44% at 12 workers): copying frames out of the file cache and thread scheduling."
+ ],
+ "hybrid": [
+  "**Device 2 measured an efficiency-core thread at 5.6k frames per second against up to 11.7k for a performance-core thread, so an E-core is about 0.47 of a P-core thread** (Device 1 reported 2.6 to 5.4 times slower).",
+  "**Performance-core threads were not all equal in the single-thread test** (7.9k to 11.7k frames per second between the lowest and the highest numbered CPU); the likely cause is interrupts and background work landing on the low-numbered CPUs, but this was not tested. It is the reason the baseline is pinned to the fastest measured thread."
+ ],
+ "datasize": [
+  "**Device 2, fixed worker counts, against a pure sequential loop in which no thread is created: threads break even at about 12 frames of 160x90 video for 2 and 4 workers, 16 frames for 8 workers and 24 frames for 12 workers**, that is when the sequential job takes about 0.8 to 1.8 ms (0.5 to 1.0 MB of frames). Below that the fixed cost of the parallel run is larger than the work it saves.",
+  "**Threads give 2x from about 48 frames** (4, 8 and 12 workers) and **90% of their best speedup from about 100 frames (2 workers), 1,000 frames (8 workers) and 2,000 frames (12 workers)**. The best speedups are 1.9x, 3.2x, 4.3x and 5.0x for 2, 4, 8 and 12 workers. More workers need larger jobs to pay off, because the fixed cost grows with the worker count (434, 431, 668 and 894 microseconds).",
+  "**The model N_be = O(P) / (t1 x (1 - 1/S)), with O(P) the fixed cost, t1 the sequential time per frame and S the large-job speedup, predicts break-evens of 8 to 13 frames**, the right order of magnitude; the measured values (12 to 24) are up to twice as large, probably because the first frames of a threaded run execute more slowly than the steady state the model assumes (not tested).",
+  "**The same sweep run on both laptops agrees in shape:** for 160x90 frames Device 1 (`zhaymn`) breaks even at 8 frames and reaches 6.8x at 16,384 frames, Device 2 at 16 frames and 5.9x; for 32x18 frames both break even at 256 frames and reach 4.3x and 3.0x. Device 2 is later and lower, consistent with its 4+4 cores against 6+4 and its higher fixed cost.",
+  "**The rule is about work, not frame count:** threads win once the sequential job takes more than about 1 to 2 ms. The videos in this project have about 14,000 frames, far above break-even; a program that handles small inputs should fall back to the sequential loop below about 50 frames of 160x90 video."
+ ],
+ "overhead": [
+  "**The fixed cost of one parallel run on Device 2 is about 430 microseconds for 2 to 4 workers, 670 for 8 and 890 for 12** (zero frames of work, best of 25 rounds). The straight-line fit of the chunked detector gives 47 + 63 microseconds per worker on Device 2 against 82 + 28 on Device 1: Device 2 pays about twice as much per worker.",
+  "**Creating and joining one thread cost 369 microseconds on Device 2 against 103 on Device 1, and 8 threads 534 against 260; `fopen` plus `fclose` cost 156 against 138 and an uncontended mutex 16 against 18 nanoseconds.** The primitive costs come from a single short measurement each (not best-of-N) and are sensitive to background load; the reason for the higher thread cost on Device 2 was not isolated.",
+  "**Thread creation and file opening dominate the fixed cost; the mutex is negligible** (tens of nanoseconds per claim, about four claims per worker per run).",
+  "**Chunk count matters when chunks become tiny.** For a 1,024-frame job with 8 workers, Device 1's speedup falls from 5.3x with one chunk per worker to 3.9x with 64 (512 chunks of 2 frames, each recomputing one overlap frame); Device 2 shows the same direction but non-monotonically (4.0, 2.7, 3.5, 2.7). For a whole 14,000-frame video the effect is small (earlier chunk study: flat from 1 to 64), which is why the design uses 4 chunks per worker."
+ ],
+ "crossover": [
+  "**Device 2 break-even for a fixed number of workers is 12 to 24 frames**, and the speedup then grows with the job until it reaches the machine's capacity (Section 5.6). The full table is below."
+ ]
+}

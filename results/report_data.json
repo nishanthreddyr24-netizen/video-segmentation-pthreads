@@ -1,0 +1,267 @@
+{
+ "dev1_breakeven": [
+  [
+   "32x18",
+   "256 frames",
+   "1.36 ms",
+   "256 frames",
+   "0.46 ms",
+   "4.31x at 16384 frames (P=12)"
+  ],
+  [
+   "160x90",
+   "8 frames",
+   "0.41 ms",
+   "8 frames",
+   "0.34 ms",
+   "6.80x at 16384 frames (P=8)"
+  ],
+  [
+   "640x360",
+   "2 frames",
+   "6.28 ms",
+   "-",
+   "-",
+   "5.41x at 512 frames (P=6)"
+  ],
+  [
+   "1280x720",
+   "4 frames",
+   "14.07 ms",
+   "-",
+   "-",
+   "5.19x at 128 frames (P=8)"
+  ]
+ ],
+ "dev1_160_win": [
+  [
+   1,
+   82,
+   0.38,
+   4
+  ],
+  [
+   2,
+   120,
+   0.48,
+   4
+  ],
+  [
+   4,
+   215,
+   0.75,
+   6
+  ],
+  [
+   8,
+   415,
+   1.14,
+   6
+  ],
+  [
+   16,
+   817,
+   1.55,
+   6
+  ],
+  [
+   32,
+   1597,
+   2.11,
+   6
+  ],
+  [
+   64,
+   3430,
+   3.09,
+   8
+  ],
+  [
+   128,
+   6896,
+   3.69,
+   8
+  ],
+  [
+   256,
+   14235,
+   4.27,
+   12
+  ],
+  [
+   512,
+   29133,
+   4.75,
+   16
+  ],
+  [
+   1024,
+   64342,
+   5.83,
+   12
+  ],
+  [
+   4096,
+   292102,
+   6.48,
+   16
+  ],
+  [
+   16384,
+   1104754,
+   6.8,
+   8
+  ]
+ ],
+ "dev1_160_lin": [
+  [
+   1,
+   40,
+   0.44,
+   2
+  ],
+  [
+   2,
+   85,
+   0.55,
+   4
+  ],
+  [
+   4,
+   168,
+   0.88,
+   4
+  ],
+  [
+   8,
+   336,
+   1.08,
+   4
+  ],
+  [
+   16,
+   685,
+   1.7,
+   8
+  ],
+  [
+   32,
+   1374,
+   2.22,
+   6
+  ],
+  [
+   64,
+   2748,
+   3.31,
+   8
+  ],
+  [
+   128,
+   5705,
+   4.0,
+   12
+  ],
+  [
+   256,
+   11565,
+   4.99,
+   8
+  ],
+  [
+   512,
+   22903,
+   5.34,
+   16
+  ],
+  [
+   1024,
+   51944,
+   6.56,
+   16
+  ],
+  [
+   4096,
+   212845,
+   7.43,
+   16
+  ]
+ ],
+ "dev1_prims": {
+  "thread_create_join_us": 102.86,
+  "spawn_join_2_threads_us": 112.83,
+  "spawn_join_4_threads_us": 234.46,
+  "spawn_join_8_threads_us": 260.07,
+  "spawn_join_16_threads_us": 469.39,
+  "mutex_uncontended_ns": 18.48,
+  "mutex_contended_2thr_ns_per_op": 53.26,
+  "mutex_contended_4thr_ns_per_op": 47.2,
+  "mutex_contended_8thr_ns_per_op": 27.16,
+  "mutex_contended_16thr_ns_per_op": 28.6,
+  "condvar_handoff_us": 10.1,
+  "fopen_fclose_us": 138.46
+ },
+ "dev2": {
+  "os_study": true,
+  "workers": true,
+  "devices": false,
+  "noise": "all: 94% noisy configs, attempts=1\np4: 8% noisy configs, attempts=1\ne4: 67% noisy configs, attempts=1\ncore8: 100% noisy configs, attempts=1\nc1: 0% noisy configs, attempts=1\nall: pass 1 94% noisy, pass2 6% noisy -> merged by best time (30 rounds per point)\ne4: pass 1 67% noisy, pass2 8% noisy -> merged by best time (30 rounds per point)\ncore8: pass 1 100% noisy, pass2 83% noisy -> merged by best time (30 rounds per point)",
+  "environment": "ac_power=yes battery=100% background_cpu_load=97.0%"
+ },
+ "main_new": true,
+ "baseline": {
+  "videos": 4,
+  "stat": "best of reps",
+  "unpinned_over_pinned_time": 1.014,
+  "speedup": {
+   "1": {
+    "pinned": 0.98,
+    "unpinned": 1.0
+   },
+   "2": {
+    "pinned": 1.85,
+    "unpinned": 1.87
+   },
+   "3": {
+    "pinned": 2.63,
+    "unpinned": 2.66
+   },
+   "4": {
+    "pinned": 3.44,
+    "unpinned": 3.49
+   },
+   "5": {
+    "pinned": 3.85,
+    "unpinned": 3.9
+   },
+   "6": {
+    "pinned": 4.19,
+    "unpinned": 4.25
+   },
+   "7": {
+    "pinned": 4.44,
+    "unpinned": 4.5
+   },
+   "8": {
+    "pinned": 4.56,
+    "unpinned": 4.62
+   },
+   "9": {
+    "pinned": 4.73,
+    "unpinned": 4.79
+   },
+   "10": {
+    "pinned": 4.87,
+    "unpinned": 4.93
+   },
+   "11": {
+    "pinned": 4.94,
+    "unpinned": 5.0
+   },
+   "12": {
+    "pinned": 5.17,
+    "unpinned": 5.24
+   }
+  }
+ }
+}

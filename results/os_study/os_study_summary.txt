@@ -1,0 +1,13 @@
+Single-thread speed: best P-core thread 11726 fps, best E-core 5569 fps -> P is 2.11x faster than E.
+all 12 CPUs: best speedup 6.63x at 12 workers
+P-cores, 8 threads (HT): best speedup 4.24x at 8 workers
+P-cores, 1 thread each (4): best speedup 3.86x at 12 workers
+E-cores (4): best speedup 2.34x at 4 workers
+1 thread per core (4P + 4E): best speedup 5.05x at 12 workers
+ONE logical CPU: best speedup 1.04x at 2 workers
+2 P-cores: best speedup 2.08x at 8 workers
+3 P-cores: best speedup 3.22x at 10 workers
+variant full: 9.9k frames/s with 1 worker, 72.1k with 12 workers (best 72.1k)
+variant compute: 11.2k frames/s with 1 worker, 63.4k with 12 workers (best 68.5k)
+variant io: 98.1k frames/s with 1 worker, 231.5k with 12 workers (best 240.0k)
+variant mmap: 10.8k frames/s with 1 worker, 58.5k with 12 workers (best 67.0k)

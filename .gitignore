@@ -12,3 +12,10 @@ REPORT.md
 /Report_MultiThreaded_Video_Segmentation.docx
 c/*.dll
 results/scene_cv_log.txt
+results/_smoke/
+results/_smoke_study/
+data/os_32x18.raw
+tools/*.exe
+results/report_check2/
+results/*.log
+/Final_Report_OS_Study_Video_Segmentation.docx

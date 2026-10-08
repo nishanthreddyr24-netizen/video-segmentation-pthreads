@@ -1,0 +1,8 @@
+all: 94% noisy configs, attempts=1
+p4: 8% noisy configs, attempts=1
+e4: 67% noisy configs, attempts=1
+core8: 100% noisy configs, attempts=1
+c1: 0% noisy configs, attempts=1
+all: pass 1 94% noisy, pass2 6% noisy -> merged by best time (30 rounds per point)
+e4: pass 1 67% noisy, pass2 8% noisy -> merged by best time (30 rounds per point)
+core8: pass 1 100% noisy, pass2 83% noisy -> merged by best time (30 rounds per point)

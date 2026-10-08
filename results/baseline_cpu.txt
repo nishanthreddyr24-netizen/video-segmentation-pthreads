@@ -1,0 +1,1 @@
+baseline pinned to logical CPU 7 (fastest P-core thread, best-of-N 0.5117 s)

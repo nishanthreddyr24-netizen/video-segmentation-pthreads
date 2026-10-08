@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RES = os.path.join(ROOT, "results")
+RES = os.environ.get("STUDY_DIR") or os.path.join(ROOT, "results")
 
 C_A, C_B, C_ID, C_AM = "#2563eb", "#d97706", "#6b7280", "#059669"
 
@@ -21,19 +21,21 @@ frames = {}
 for r in csv.DictReader(open(os.path.join(RES, "study_raw.csv"))):
     raw[(r["video"], r["arch"], int(r["workers"]))].append(float(r["seconds"]))
     frames[r["video"]] = int(r["frames"])
-med = {k: median(v) for k, v in raw.items()}
+STAT = min if os.environ.get("STUDY_STAT") == "min" else median      # best-of-N when measured on a busy machine
+med = {k: STAT(v) for k, v in raw.items()}
+BASE = "seqP" if any(k[1] == "seqP" for k in med) else "seq"   # pinned-to-P-core baseline if measured
 videos = sorted({k[0] for k in med})
 W = sorted({k[2] for k in med if k[1] == "a"})
 
 
 def speedups(arch, vids):
-    return np.array([[med[(v, "seq", 1)] / med[(v, arch, w)] for w in W] for v in vids])
+    return np.array([[med[(v, BASE, 1)] / med[(v, arch, w)] for w in W] for v in vids])
 
 
 SA = speedups("a", videos)                       # videos x workers
 mean_s, lo_s, hi_s = SA.mean(0), SA.min(0), SA.max(0)
 fps = np.array([[frames[v] / med[(v, "a", w)] for w in W] for v in videos]).mean(0)
-fps_seq = np.mean([frames[v] / med[(v, "seq", 1)] for v in videos])
+fps_seq = np.mean([frames[v] / med[(v, BASE, 1)] for v in videos])
 eff = mean_s / np.array(W)
 Wf = np.array(W, float)
 kf = np.where(Wf > 1, (1 / mean_s - 1 / Wf) / (1 - 1 / Wf), np.nan)     # Karp-Flatt
@@ -45,8 +47,8 @@ s_fit = grid[int(np.argmin(sse))]
 amdahl = 1 / (s_fit + (1 - s_fit) / Wf)
 
 # B (short comparison): only recorded for the BBB video
-SB = np.array([med[("bbb", "seq", 1)] / med[("bbb", "b", w)] for w in W]) if ("bbb", "b", 1) in med else None
-SA_bbb = np.array([med[("bbb", "seq", 1)] / med[("bbb", "a", w)] for w in W])
+SB = np.array([med[("bbb", BASE, 1)] / med[("bbb", "b", w)] for w in W]) if ("bbb", "b", 1) in med else None
+SA_bbb = np.array([med[("bbb", BASE, 1)] / med[("bbb", "a", w)] for w in W])
 
 # ---- figure -----------------------------------------------------------------
 fig, ax = plt.subplots(2, 2, figsize=(12, 8.5))
@@ -66,7 +68,7 @@ a.legend(fontsize=8, loc="upper left")
 
 a = ax[0, 1]
 a.plot(W, fps / 1000, "o-", color=C_A, lw=2.2)
-a.axhline(fps_seq / 1000, color=C_ID, ls=":", label=f"single-threaded baseline ({fps_seq/1000:.1f}k fps)")
+a.axhline(fps_seq / 1000, color=C_ID, ls=":", label=f"single-threaded baseline ({'pinned to a P-core' if BASE == 'seqP' else 'unpinned'}, {fps_seq/1000:.1f}k fps)")
 a.set(xlabel="number of workers (threads)", ylabel="throughput, thousand frames / s",
       title="Throughput (mean of 11 videos)", xlim=(1, 12), ylim=(0, None))
 a.legend(fontsize=8)
@@ -101,7 +103,11 @@ with open(os.path.join(RES, "main_study_table.md"), "w") as f:
     for r in rows:
         f.write("| " + " | ".join("" if x is None else str(x) for x in r) + " |\n")
 print(open(os.path.join(RES, "main_study_table.md")).read())
-print(f"baseline sequential: {fps_seq:.0f} frames/s; Amdahl-fit serial fraction {s_fit:.4f}")
+print(f"baseline sequential ({BASE}): {fps_seq:.0f} frames/s; Amdahl-fit serial fraction {s_fit:.4f}")
+if BASE == "seqP":
+    un = np.array([[med[(v, "seq", 1)] / med[(v, "a", w)] for w in W] for v in videos]).mean(0)
+    ratio = np.mean([med[(v, "seq", 1)] / med[(v, "seqP", 1)] for v in videos])
+    print(f"unpinned baseline is {ratio:.2f}x the pinned one; speedup at {W[-1]} workers: pinned {mean_s[-1]:.2f}x vs unpinned {un[-1]:.2f}x")
 if SB is not None:
     print("B on BBB speedups:", np.round(SB, 2).tolist())
     print("A on BBB speedups:", np.round(SA_bbb, 2).tolist())

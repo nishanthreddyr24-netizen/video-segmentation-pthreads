@@ -1,0 +1,12 @@
+thread_create_join_us,219.11
+spawn_join_2_threads_us,221.59
+spawn_join_4_threads_us,443.47
+spawn_join_8_threads_us,1358.88
+spawn_join_16_threads_us,2122.55
+mutex_uncontended_ns,23.18
+mutex_contended_2thr_ns_per_op,29.56
+mutex_contended_4thr_ns_per_op,46.89
+mutex_contended_8thr_ns_per_op,47.15
+mutex_contended_16thr_ns_per_op,76.70
+condvar_handoff_us,46.08
+fopen_fclose_us,145.37
